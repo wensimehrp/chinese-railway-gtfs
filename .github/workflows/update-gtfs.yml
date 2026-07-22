@@ -1,0 +1,48 @@
+name: Update GTFS
+
+on:
+  schedule:
+    - cron: "0 0 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Download update script
+        env:
+          SCRIPT_URL: ${{ secrets.PYTHON_SCRIPT_URL }}
+        run: |
+          curl -fsSL "$SCRIPT_URL" -o update.py
+
+      - name: Run update script
+        run: |
+          uv run update.py > /dev/null 2>&1
+
+      - name: Create timestamp tag
+        id: tag
+        run: |
+          TAG="gtfs-$(date -u +'%Y%m%d-%H%M%S')"
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          files: |
+            output_gtfs.zip
