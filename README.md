@@ -11,9 +11,13 @@ included.
 
 ## 数据来源 | Data Source
 
+GTFS 数据每周更新一次。可以在 Releases 中下载数据。
+
 车站坐标来自 [OpenStreetMap](https://openstreetmap.org)。
 
 时刻表与线路数据来自一铁路平台。考虑到相关影响，暂不开源获取数据的方法。
+
+The GTFS data updates weekly. You can retrieve the data through releases. 
 
 Station coordinate data are from [OpenStreetMap](https://openstreetmap.org)
 
