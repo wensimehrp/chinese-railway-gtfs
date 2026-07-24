@@ -45,6 +45,6 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
           body: |
-            Preview the GTFS file: <https://paiagram.com/nightly/?open=/api/proxy?url=https://github.com/wensimehrp/chinese-railway-gtfs/releases/download/${{ steps.tag.outputs.tag }}/output_gtfs.zip>
+            Preview the GTFS file on [Paiagram](https://paiagram.com/nightly/?open=/api/proxy?url=https://github.com/wensimehrp/chinese-railway-gtfs/releases/download/${{ steps.tag.outputs.tag }}/output_gtfs.zip).
           files: |
             output_gtfs.zip
