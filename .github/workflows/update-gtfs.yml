@@ -55,7 +55,7 @@ jobs:
           {
             echo "body<<GTFS_ISSUE_EOF"
             echo "本 issue 由 [Update GTFS](../actions/workflows/update-gtfs.yml) workflow 自动维护。"
-            echo "请勿手动修改标题；在下方列表中的车站坐标补全/清理后，推送更新 out.csv 即可由 Sync coordinate issue with out.csv workflow 自动从本 issue 中移除对应条目。"
+            echo "请勿手动修改标题；在下方列表中的车站坐标补全/清理后，推送更新 out.csv 即可自动从本 issue 中移除对应条目。"
             echo
             echo "## 重复坐标车站"
             echo
@@ -63,7 +63,7 @@ jobs:
             echo
             if [ -s duplicated_stations.txt ]; then
               while IFS= read -r line; do
-                [ -n "$line" ] && echo "- \`$line\`"
+                [ -n "$line" ] && echo "1. $line"
               done < duplicated_stations.txt
             else
               echo "_暂无_"
@@ -75,7 +75,7 @@ jobs:
             echo
             if [ -s missing_stations.txt ]; then
               while IFS= read -r line; do
-                [ -n "$line" ] && echo "- \`$line\`"
+                [ -n "$line" ] && echo "1. $line"
               done < missing_stations.txt
             else
               echo "_暂无_"
@@ -87,7 +87,7 @@ jobs:
             echo
             if [ -s extra_stations.txt ]; then
               while IFS= read -r line; do
-                [ -n "$line" ] && echo "- \`$line\`"
+                [ -n "$line" ] && echo "1. $line"
               done < extra_stations.txt
             else
               echo "_暂无_"
