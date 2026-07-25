@@ -63,7 +63,7 @@ jobs:
             echo
             if [ -s duplicated_stations.txt ]; then
               while IFS= read -r line; do
-                [ -n "$line" ] && echo "- [ ] \`$line\`"
+                [ -n "$line" ] && echo "- \`$line\`"
               done < duplicated_stations.txt
             else
               echo "_暂无_"
@@ -75,7 +75,7 @@ jobs:
             echo
             if [ -s missing_stations.txt ]; then
               while IFS= read -r line; do
-                [ -n "$line" ] && echo "- [ ] \`$line\`"
+                [ -n "$line" ] && echo "- \`$line\`"
               done < missing_stations.txt
             else
               echo "_暂无_"
@@ -87,7 +87,7 @@ jobs:
             echo
             if [ -s extra_stations.txt ]; then
               while IFS= read -r line; do
-                [ -n "$line" ] && echo "- [ ] \`$line\`"
+                [ -n "$line" ] && echo "- \`$line\`"
               done < extra_stations.txt
             else
               echo "_暂无_"
