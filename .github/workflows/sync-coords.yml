@@ -1,0 +1,149 @@
+name: Sync coordinate issue with out.csv
+
+on:
+  push:
+    paths:
+      - "out.csv"
+
+permissions:
+  issues: write
+  contents: read
+
+env:
+  ISSUE_TITLE: "车站坐标缺失/重复报告"
+  ISSUE_LABEL: "missing-coordinates"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync tracking issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+
+            const title = process.env.ISSUE_TITLE;
+            const label = process.env.ISSUE_LABEL;
+
+            // Count how many coordinate rows out.csv currently has for
+            // each station name (column 0), skipping the header row.
+            const csvContent = fs.readFileSync("out.csv", "utf-8");
+            const lines = csvContent
+              .split(/\r?\n/)
+              .filter((l) => l.trim().length > 0);
+            const counts = {};
+            for (const line of lines.slice(1)) {
+              const stn = line.split(",")[0];
+              if (!stn) continue;
+              counts[stn] = (counts[stn] || 0) + 1;
+            }
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: label,
+            });
+            const issue = issues.find((i) => i.title === title);
+            if (!issue) {
+              core.info("No open coordinate-report issue found; nothing to sync.");
+              return;
+            }
+
+            const body = issue.body || "";
+            const bodyLines = body.split(/\r?\n/);
+
+            const stationFromLine = (line) => {
+              const m = line.match(/`([^`]+)`/);
+              return m ? m[1] : null;
+            };
+
+            let section = null;
+            const outLines = [];
+            let removedDup = 0;
+            let removedMissing = 0;
+            let removedExtra = 0;
+
+            for (const line of bodyLines) {
+              if (line.startsWith("## 重复坐标车站")) {
+                section = "dup";
+                outLines.push(line);
+                continue;
+              }
+              if (line.startsWith("## 缺失坐标车站")) {
+                section = "missing";
+                outLines.push(line);
+                continue;
+              }
+              if (line.startsWith("## 多余坐标车站")) {
+                section = "extra";
+                outLines.push(line);
+                continue;
+              }
+              if (line.startsWith("## ")) {
+                section = null;
+                outLines.push(line);
+                continue;
+              }
+
+              const stn = stationFromLine(line);
+
+              if (stn && section === "dup") {
+                // Still duplicated if it has more than one row.
+                if ((counts[stn] || 0) > 1) {
+                  outLines.push(line);
+                } else {
+                  removedDup++;
+                }
+                continue;
+              }
+
+              if (stn && section === "missing") {
+                // Resolved once it has at least one row.
+                if (!(counts[stn] > 0)) {
+                  outLines.push(line);
+                } else {
+                  removedMissing++;
+                }
+                continue;
+              }
+
+              if (stn && section === "extra") {
+                // Resolved once its row(s) have been deleted from out.csv.
+                if ((counts[stn] || 0) > 0) {
+                  outLines.push(line);
+                } else {
+                  removedExtra++;
+                }
+                continue;
+              }
+
+              outLines.push(line);
+            }
+
+            const newBody = outLines.join("\n");
+
+            if (newBody === body) {
+              core.info("No resolved stations found in out.csv update; issue unchanged.");
+              return;
+            }
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: newBody,
+            });
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: `根据 ${context.sha.substring(0, 7)} 对 out.csv 的更新，移除了 ${removedDup} 个已解决的重复坐标车站、${removedMissing} 个已补全坐标的车站，以及 ${removedExtra} 个已从 out.csv 中清理的多余车站。`,
+            });
+
+            core.info(`Synced issue #${issue.number}: -${removedDup} dup, -${removedMissing} missing, -${removedExtra} extra`);

@@ -12,11 +12,15 @@ on:
 
 permissions:
   contents: write
+  issues: write
+
+env:
+  ISSUE_TITLE: "车站坐标缺失/重复报告"
+  ISSUE_LABEL: "missing-coordinates"
 
 jobs:
   update:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -25,6 +29,15 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+
+      - name: Ensure tracking label exists
+        run: |
+          gh label create "$ISSUE_LABEL" \
+            --color "d93f0b" \
+            --description "车站坐标缺失或重复，等待在 out.csv 中补全" \
+            || true
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Download update script
         env:
@@ -35,6 +48,91 @@ jobs:
       - name: Run update script
         run: |
           uv run update.py --download > /dev/null 2>&1
+
+      - name: Build coordinate-report issue body
+        id: body
+        run: |
+          {
+            echo "body<<GTFS_ISSUE_EOF"
+            echo "本 issue 由 [Update GTFS](../actions/workflows/update-gtfs.yml) workflow 自动维护。"
+            echo "请勿手动修改标题；在下方列表中的车站坐标补全/清理后，推送更新 out.csv 即可由 Sync coordinate issue with out.csv workflow 自动从本 issue 中移除对应条目。"
+            echo
+            echo "## 重复坐标车站"
+            echo
+            echo "以下车站在 out.csv 中存在不止一条坐标记录，请确认后只保留一条正确记录："
+            echo
+            if [ -s duplicated_stations.txt ]; then
+              while IFS= read -r line; do
+                [ -n "$line" ] && echo "- [ ] \`$line\`"
+              done < duplicated_stations.txt
+            else
+              echo "_暂无_"
+            fi
+            echo
+            echo "## 缺失坐标车站"
+            echo
+            echo "以下车站在 out.csv 中没有任何坐标记录，请补充一行 \`站名,lon,lat,id\`："
+            echo
+            if [ -s missing_stations.txt ]; then
+              while IFS= read -r line; do
+                [ -n "$line" ] && echo "- [ ] \`$line\`"
+              done < missing_stations.txt
+            else
+              echo "_暂无_"
+            fi
+            echo
+            echo "## 多余坐标车站"
+            echo
+            echo "以下车站在 out.csv 中有坐标记录，但未被本次导出实际使用（不在任何数据库线路/车次中），可考虑从 out.csv 中清理："
+            echo
+            if [ -s extra_stations.txt ]; then
+              while IFS= read -r line; do
+                [ -n "$line" ] && echo "- [ ] \`$line\`"
+              done < extra_stations.txt
+            else
+              echo "_暂无_"
+            fi
+            echo "GTFS_ISSUE_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create or update coordinate-report issue
+        uses: actions/github-script@v7
+        env:
+          ISSUE_BODY: ${{ steps.body.outputs.body }}
+        with:
+          script: |
+            const title = process.env.ISSUE_TITLE;
+            const label = process.env.ISSUE_LABEL;
+            const body = process.env.ISSUE_BODY;
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: label,
+            });
+
+            let issue = issues.find((i) => i.title === title);
+
+            if (!issue) {
+              const { data: created } = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: [label],
+              });
+              issue = created;
+              core.info(`Created issue #${issue.number}`);
+            } else {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body,
+              });
+              core.info(`Updated issue #${issue.number}`);
+            }
 
       - name: Create timestamp tag
         id: tag
