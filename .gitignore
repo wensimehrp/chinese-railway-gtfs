@@ -4,3 +4,4 @@
 !.github
 !.github/**
 !out.csv
+!sort.py
