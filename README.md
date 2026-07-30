@@ -17,8 +17,9 @@ GTFS 数据每周更新一次。可以在 Releases 中下载数据。车站坐�
 [OpenStreetMap](https://openstreetmap.org)。时刻表与线路数据来自一铁路平台。
 考虑到相关影响，暂不公开获取数据的方法。
 
-The GTFS data updates weekly. You can retrieve the data through releases. 
-Station coordinate data are from [OpenStreetMap](https://openstreetmap.org)
+The GTFS feed updates weekly. You can download the feed from GitHub releases. 
+Station coordinate data are obtained from
+[OpenStreetMap](https://openstreetmap.org).
 Timetable and route data are from a rail service. Due various
 considerations, the procedure used to fetch the data will not be published.
 
