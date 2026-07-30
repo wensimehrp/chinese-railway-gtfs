@@ -4,11 +4,12 @@
 车站名称与坐标、列车时刻。不包含如无障碍设施、车票费用等其他信息。GTFS 格式的
 详细信息请参见 <https://gtfs.org/>。
 
-The GTFS only covers stations, routes, and trips from China State Railway Group
-Co., Ltd.. Only times, station names and coordinates, and route info are
-included. Other information, such as accessibility and fare info, are not
-included. Please refer to <https://gtfs.org/> for more information on the
-format.
+The GTFS feed published by this repository covers stations, routes, and
+trips from China State Railway Group Co., Ltd.. The feed covers only
+timetables, railway lines' station list, station coordinates, and
+train timetables. Other information, such as accessibility and fare info,
+are not included. Please refer to <https://gtfs.org/> for more information
+on the format.
 
 ## 数据来源 | Data Source
 
@@ -18,8 +19,8 @@ GTFS 数据每周更新一次。可以在 Releases 中下载数据。车站坐�
 
 The GTFS data updates weekly. You can retrieve the data through releases. 
 Station coordinate data are from [OpenStreetMap](https://openstreetmap.org)
-Timetable and route data are from a rail service. Due to limitations and
-regulations, the procedure used to fetch the data will not be published.
+Timetable and route data are from a rail service. Due various
+considerations, the procedure used to fetch the data will not be published.
 
 ## 约定 | Conventions
 
@@ -32,14 +33,14 @@ regulations, the procedure used to fetch the data will not be published.
 `杭深线 (全线)`。在导入数据时可以忽略这部分车次。
 
 Station coordinates follow GTFS specifications and are in WGS84.
-Please mind the coordinate system when importing the data.
+Please use the correct coordinate system when importing the data.
 
 China Railway runs through services regularly. The GTFS standard
 specification requires each trip to have a route ID. Considering
 the amount of through trains in the CR system, the route ID of trips
-in the GTFS files released by this repo will be the trip's class
+in the GTFS files released by this repo will be the trip's service type
 instead of route ID. Additionally, the list of stations on actual
 railway lines are preserved via additional `<route name> (全线)`
-trips with line station lists imported as trip timetable entries.
+trips with line station lists encoded as timetable entries.
 For example, Hangzhou–Shenzhen line (杭深线) would correspond to
 `杭深线 (全线)`. You may ignore those trips when importing the data.
