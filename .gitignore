@@ -1,7 +1,1 @@
-*
-!.gitignore
-!README.md
-!.github
-!.github/**
-!out.csv
-!sort.py
+.direnv
