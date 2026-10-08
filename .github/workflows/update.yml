@@ -16,7 +16,7 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     permissions:
       id-token: write
       contents: read
@@ -38,10 +38,14 @@ jobs:
             sleep 1
           done
 
-          if [ -n "${1:-}" ]; then
+          if [ -z "${1:-}" ]; then
+            # all trains: run the full station crawl too
+            uv run chinese-railway-gtfs crawl
+          elif [ "$1" -lt 100 ]; then
+            # small run: seed the station list for speed
             uv run chinese-railway-gtfs crawl --seed-stations --trains "$1"
           else
-            uv run chinese-railway-gtfs crawl --seed-stations
+            uv run chinese-railway-gtfs crawl --trains "$1"
           fi
           uv run chinese-railway-gtfs postprocess
           EOF
