@@ -5,11 +5,14 @@ uploads its own ``export/railgo.sqlite``. This collects those files into a singl
 database (trains are unique by ``code``) and then runs the ``postprocess`` step,
 so the workflow can publish one SQLite file and one decoded ``data/railgo.json``.
 
-    python merge.py <out.sqlite> <glob>...
+    python merge.py <out.sqlite> <input>...
 
-The ``<glob>`` arguments are expanded here rather than by the shell, so callers
-can quote them. Rows pulled from every match are inserted into ``<out.sqlite>``,
-ignoring duplicates, so the result is the same regardless of shard order.
+Each ``<input>`` may be a file, a glob (``**`` is allowed), or a directory to
+search recursively, so the caller does not have to know how the artifact
+downloader laid the shard files out. Inputs are expanded here rather than by
+the shell, so callers can quote them. Rows pulled from every match are inserted
+into ``<out.sqlite>``, ignoring duplicates, so the result is the same regardless
+of shard order.
 """
 
 from __future__ import annotations
@@ -28,11 +31,27 @@ TABLES = ("trains", "stations")
 PRIMARY_KEY = {"trains": "code", "stations": "telecode"}
 
 
-def resolve(patterns: list[str]) -> list[Path]:
-    """Expand the given globs into a sorted, de-duplicated list of files."""
-    paths = sorted({Path(path) for pattern in patterns for path in glob.glob(pattern)})
+def resolve(patterns: list[str], exclude: Path | None = None) -> list[Path]:
+    """Expand files, globs (``**`` allowed) and directories into input paths."""
+    found: set[Path] = set()
+    for pattern in patterns:
+        candidate = Path(pattern)
+        if candidate.is_dir():
+            found.update(candidate.rglob("*.sqlite"))
+        else:
+            found.update(Path(match) for match in glob.glob(pattern, recursive=True))
+
+    skip = exclude.resolve() if exclude is not None else None
+    paths = sorted(
+        path
+        for path in found
+        if path.is_file() and (skip is None or path.resolve() != skip)
+    )
     if not paths:
-        raise SystemExit(f"no SQLite files matched {patterns}")
+        nearby = sorted(str(path) for path in Path().rglob("*.sqlite"))
+        raise SystemExit(
+            f"no SQLite inputs matched {patterns}; found instead: {nearby}"
+        )
     return paths
 
 
@@ -94,7 +113,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="merge shard databases")
     parser.add_argument("out", type=Path, help="output SQLite path")
     parser.add_argument(
-        "inputs", nargs="+", help="shard SQLite paths (globs are expanded)"
+        "inputs",
+        nargs="+",
+        help="shard SQLite files; globs (** allowed) and directories are expanded",
     )
     parser.add_argument(
         "--json",
@@ -104,8 +125,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    inputs = resolve(args.inputs)
-    print(f"merging {len(inputs)} shard databases")
+    inputs = resolve(args.inputs, exclude=args.out)
+    print(f"merging {len(inputs)} shard databases:")
+    for path in inputs:
+        print(f"  {path}")
     trains, stations = merge(args.out, inputs)
     print(f"merged: {trains} trains, {stations} stations")
 

@@ -35,7 +35,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: DeterminateSystems/flakehub-cache-action@main
+      # Persist /nix/store through the GitHub Actions cache so the dev shell --
+      # including the locally-built MongoDB, which is in no binary cache -- is
+      # restored instead of fetched/rebuilt by every job of every run. Because
+      # crawl/merge `needs:` this job, the store it saves here is also reusable
+      # by them within the same run.
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
 
       - run: nix develop --command uv run python discover.py
 
@@ -64,7 +73,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: DeterminateSystems/flakehub-cache-action@main
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
 
       - uses: actions/download-artifact@v4
         with:
@@ -92,7 +105,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: DeterminateSystems/flakehub-cache-action@main
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
 
       - uses: actions/download-artifact@v4
         with:
@@ -102,7 +119,7 @@ jobs:
           nix develop --command \
           uv run python merge.py \
           export/railgo.sqlite \
-          'shard-*/export/railgo.sqlite'
+          '**/railgo.sqlite'
 
       - uses: actions/upload-artifact@v4
         with:
