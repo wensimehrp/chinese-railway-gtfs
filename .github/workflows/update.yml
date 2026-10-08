@@ -4,6 +4,15 @@ on:
     inputs:
       trains:
         description: Max trains per shard (empty = all)
+      shards:
+        description: Number of shards
+        default: "8"
+      parallel:
+        description: Shards crawled at once
+        default: "8"
+      workers:
+        description: Trains crawled concurrently per shard
+        default: "4"
   # push:
   #   branches:
   #     - main
@@ -18,26 +27,86 @@ permissions:
   contents: read
 
 jobs:
-  crawl:
+  discover:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    timeout-minutes: 60
+    outputs:
+      shards: ${{ steps.shards.outputs.list }}
     steps:
       - uses: actions/checkout@v5
       - uses: DeterminateSystems/determinate-nix-action@v3
       - uses: DeterminateSystems/flakehub-cache-action@main
+
+      - run: nix develop --command uv run python discover.py
+
+      - id: shards
+        env:
+          SHARDS: ${{ inputs.shards || '8' }}
+        run: echo "list=[$(seq -s, 0 $((SHARDS - 1)))]" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: roster
+          path: roster.json
+
+  crawl:
+    needs: discover
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      # 12306 rate-limits by IP, and every shard runs on its own runner. Bound
+      # how many runners crawl at once; the total request rate is roughly
+      # `parallel x workers`.
+      max-parallel: ${{ fromJSON(inputs.parallel || '8') }}
+      matrix:
+        shard: ${{ fromJSON(needs.discover.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: DeterminateSystems/flakehub-cache-action@main
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: roster
 
       - run: |
           nix develop --command \
           uv run python shard.py \
           "${{ matrix.shard }}" \
           "${{ strategy.job-total }}" \
-          "${{ inputs.trains || '0' }}"
+          "${{ inputs.trains || '0' }}" \
+          "${{ inputs.workers || '4' }}"
 
       - uses: actions/upload-artifact@v4
         with:
           name: shard-${{ matrix.shard }}
           path: export/railgo.sqlite
+
+  merge:
+    needs: crawl
+    # Shards are allowed to fail (fail-fast is off), so merge whatever landed.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: DeterminateSystems/flakehub-cache-action@main
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: shard-*
+
+      - run: |
+          nix develop --command \
+          uv run python merge.py \
+          export/railgo.sqlite \
+          'shard-*/export/railgo.sqlite'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: railgo
+          path: |
+            export/railgo.sqlite
+            data/railgo.json

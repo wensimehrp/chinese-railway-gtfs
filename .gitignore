@@ -1,6 +1,8 @@
 .direnv
+.venv/
 .mongodb/
 data/
 export/
 railgo.log
+roster.json
 __pycache__
