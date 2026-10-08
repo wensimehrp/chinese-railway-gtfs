@@ -1,1 +1,5 @@
 .direnv
+.mongodb/
+data/
+export/
+railgo.log
