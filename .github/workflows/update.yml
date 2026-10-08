@@ -4,7 +4,6 @@ on:
     inputs:
       trains:
         description: Number of trains to crawl (empty = all)
-        default: "50"
   # push:
   #   branches:
   #     - main
@@ -28,6 +27,7 @@ jobs:
       - uses: DeterminateSystems/flakehub-cache-action@main
 
       - run: |
+          echo "TRAINS='${TRAINS}'"
           cat > crawl.sh <<'EOF'
           set -euo pipefail
 
