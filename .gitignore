@@ -3,3 +3,4 @@
 data/
 export/
 railgo.log
+__pycache__
