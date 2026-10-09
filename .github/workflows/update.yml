@@ -5,9 +5,8 @@ on:
     inputs:
       railgo_db_url:
         description: railgo sqlite url (empty = scrape)
-  # push:
-  #   branches:
-  #     - main
+  schedule:
+    - cron: "0 0 * * *"
 
 concurrency:
   group: update
@@ -71,4 +70,35 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           archive: false
-          path: export
+          path: export/output_gtfs.zip
+
+  release:
+    needs: generate_gtfs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download generated GTFS
+        uses: actions/download-artifact@v7
+        with:
+          name: output_gtfs.zip
+
+      - name: Create timestamp tag
+        id: tag
+        run: |
+          TAG="gtfs-$(date -u +'%Y%m%d-%H%M%S')"
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          body: |
+            Preview the GTFS file on [Paiagram](https://paiagram.com/nightly/?open=/api/proxy?url=https://github.com/wensimehrp/chinese-railway-gtfs/releases/download/${{ steps.tag.outputs.tag }}/output_gtfs.zip).
+          files: |
+            output_gtfs.zip
