@@ -1,55 +1,104 @@
+name: Scrape and Generate GTFS
+
 on:
-  # pull_request:
   workflow_dispatch:
     inputs:
-      trains:
-        description: Number of trains to crawl (empty = all)
-        default: "50"
-  # push:
-  #   branches:
-  #     - main
+      railgo_db_url:
+        description: railgo sqlite url (empty = scrape)
+  schedule:
+    - cron: "0 0 * * *"
+
+concurrency:
+  group: update
+  cancel-in-progress: false
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
-  update:
+  scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-    permissions:
-      id-token: write
-      contents: read
-    env:
-      TRAINS: ${{ inputs.trains }}
+    timeout-minutes: 360
+    # Skip the crawl when a database URL is supplied.
+    if: ${{ inputs.railgo_db_url == '' }}
     steps:
       - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v5
       - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: DeterminateSystems/flakehub-cache-action@main
-
-      - run: |
-          cat > crawl.sh <<'EOF'
-          set -euo pipefail
-
-          # railgo-parser's exporters need a local MongoDB.
-          railgo-mongod &
-          for _ in $(seq 30); do
-            mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok' | grep -q 1 && break
-            sleep 1
-          done
-
-          if [ -n "${1:-}" ]; then
-            uv run chinese-railway-gtfs crawl --seed-stations --trains "$1"
-          else
-            uv run chinese-railway-gtfs crawl --seed-stations
-          fi
-          uv run chinese-railway-gtfs postprocess
-          EOF
-          nix develop --command bash crawl.sh "${TRAINS}"
-
-      - uses: actions/upload-artifact@v4
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
         with:
-          name: data
-          path: |
-            export/railgo.sqlite
-            data/railgo.json
+          use-flakehub: false
+
+      - run: nix develop --command scrape.py
+
+      # archive: false stores the file as-is. With archiving off the artifact
+      # is named after the file, so downstream requests it as `railgo.sqlite`.
+      - uses: actions/upload-artifact@v7
+        with:
+          path: export/railgo.sqlite
+          archive: false
+
+  generate_gtfs:
+    needs: scrape
+    # `scrape` is skipped when a URL is supplied, so `always()` keeps this job
+    # from being skipped with it; the steps below pick the data source. On the
+    # scrape path it waits for scrape and only runs if scrape succeeded.
+    if: ${{ always() && !cancelled() && (inputs.railgo_db_url != '' || needs.scrape.result == 'success') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v5
+
+      # Normal path: the database produced by `scrape`
+      - name: Download scraped database
+        if: ${{ inputs.railgo_db_url == '' }}
+        uses: actions/download-artifact@v7
+        with:
+          name: railgo.sqlite
+
+      # URL path: the supplied URL points straight at the sqlite
+      - name: Download supplied database
+        if: ${{ inputs.railgo_db_url != '' }}
+        env:
+          DB_URL: ${{ inputs.railgo_db_url }}
+        run: |
+          curl --fail --location --retry 3 --output railgo.sqlite "$DB_URL"
+
+      - run: uv run gen_gtfs.py
+
+      - uses: actions/upload-artifact@v7
+        with:
+          archive: false
+          path: export/output_gtfs.zip
+
+  release:
+    needs: generate_gtfs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download generated GTFS
+        uses: actions/download-artifact@v7
+        with:
+          name: output_gtfs.zip
+
+      - name: Create timestamp tag
+        id: tag
+        run: |
+          TAG="gtfs-$(date -u +'%Y%m%d-%H%M%S')"
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          body: |
+            Preview the GTFS file on [Paiagram](https://paiagram.com/nightly/?open=/api/proxy?url=https://github.com/wensimehrp/chinese-railway-gtfs/releases/download/${{ steps.tag.outputs.tag }}/output_gtfs.zip).
+          files: |
+            output_gtfs.zip

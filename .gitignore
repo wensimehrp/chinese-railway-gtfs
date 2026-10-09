@@ -1,1 +1,8 @@
 .direnv
+.venv/
+.mongodb/
+data/
+export/
+railgo.log
+railgo.sqlite
+__pycache__
