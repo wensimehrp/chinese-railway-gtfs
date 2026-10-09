@@ -4,5 +4,5 @@
 data/
 export/
 railgo.log
-roster.json
+railgo.sqlite
 __pycache__

@@ -1,23 +1,12 @@
 on:
-  # pull_request:
   workflow_dispatch:
     inputs:
-      trains:
-        description: Max trains per shard (empty = all)
-      shards:
-        description: Number of shards
-        default: "8"
-      parallel:
-        description: Shards crawled at once
-        default: "8"
-      workers:
-        description: Trains crawled concurrently per shard
-        default: "4"
+      railgo_db_url:
+        description: railgo sqlite url (empty = scrape)
   # push:
   #   branches:
   #     - main
 
-# Never let two crawls hit 12306 at the same time.
 concurrency:
   group: update
   cancel-in-progress: false
@@ -27,103 +16,59 @@ permissions:
   contents: read
 
 jobs:
-  discover:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    outputs:
-      shards: ${{ steps.shards.outputs.list }}
-    steps:
-      - uses: actions/checkout@v5
-      - uses: DeterminateSystems/determinate-nix-action@v3
-      # Persist /nix/store through the GitHub Actions cache so the dev shell --
-      # including the locally-built MongoDB, which is in no binary cache -- is
-      # restored instead of fetched/rebuilt by every job of every run. Because
-      # crawl/merge `needs:` this job, the store it saves here is also reusable
-      # by them within the same run.
-      - uses: nix-community/cache-nix-action@v7
-        with:
-          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 5G
-
-      - run: nix develop --command uv run python discover.py
-
-      - id: shards
-        env:
-          SHARDS: ${{ inputs.shards || '8' }}
-        run: echo "list=[$(seq -s, 0 $((SHARDS - 1)))]" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: roster
-          path: roster.json
-
-  crawl:
-    needs: discover
+  scrape:
     runs-on: ubuntu-latest
     timeout-minutes: 360
-    strategy:
-      fail-fast: false
-      # 12306 rate-limits by IP, and every shard runs on its own runner. Bound
-      # how many runners crawl at once; the total request rate is roughly
-      # `parallel x workers`.
-      max-parallel: ${{ fromJSON(inputs.parallel || '8') }}
-      matrix:
-        shard: ${{ fromJSON(needs.discover.outputs.shards) }}
+    # Skip the crawl when a database URL is supplied.
+    if: ${{ inputs.railgo_db_url == '' }}
     steps:
       - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v5
       - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: nix-community/cache-nix-action@v7
+      - uses: DeterminateSystems/magic-nix-cache-action@15
         with:
-          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 5G
+          use-flakehub: false
 
-      - uses: actions/download-artifact@v4
+      - run: nix develop --command scrape.py
+
+      # archive: false stores the file as-is. With archiving off the artifact
+      # is named after the file, so downstream requests it as `railgo.sqlite`.
+      - uses: actions/upload-artifact@v7
         with:
-          name: roster
-
-      - run: |
-          nix develop --command \
-          uv run python shard.py \
-          "${{ matrix.shard }}" \
-          "${{ strategy.job-total }}" \
-          "${{ inputs.trains || '0' }}" \
-          "${{ inputs.workers || '4' }}"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: shard-${{ matrix.shard }}
           path: export/railgo.sqlite
+          archive: false
 
-  merge:
-    needs: crawl
-    # Shards are allowed to fail (fail-fast is off), so merge whatever landed.
-    if: ${{ !cancelled() }}
+  generate_gtfs:
+    needs: scrape
+    # `scrape` is skipped when a URL is supplied, so `always()` keeps this job
+    # from being skipped with it; the steps below pick the data source. On the
+    # scrape path it waits for scrape and only runs if scrape succeeded.
+    if: ${{ always() && !cancelled() && (inputs.railgo_db_url != '' || needs.scrape.result == 'success') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-      - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: nix-community/cache-nix-action@v7
-        with:
-          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 5G
+      - uses: astral-sh/setup-uv@v5
 
-      - uses: actions/download-artifact@v4
+      # Normal path: the database produced by `scrape`
+      - name: Download scraped database
+        if: ${{ inputs.railgo_db_url == '' }}
+        uses: actions/download-artifact@v7
         with:
-          pattern: shard-*
+          name: railgo.sqlite
 
-      - run: |
-          nix develop --command \
-          uv run python merge.py \
-          export/railgo.sqlite \
-          '**/railgo.sqlite'
+      # URL path: the supplied URL points straight at the sqlite
+      - name: Download supplied database
+        if: ${{ inputs.railgo_db_url != '' }}
+        env:
+          DB_URL: ${{ inputs.railgo_db_url }}
+        run: |
+          curl --fail --location --retry 3 --output railgo.sqlite "$DB_URL"
 
-      - uses: actions/upload-artifact@v4
+      - run: uv run gen_gtfs.py
+
+      # archive: false uploads a single file, so send just the feed; the
+      # coordinate reports in export/ are not part of this artifact.
+      - uses: actions/upload-artifact@v7
         with:
-          name: railgo
-          path: |
-            export/railgo.sqlite
-            data/railgo.json
+          archive: false
+          path: export/output_gtfs.zip
