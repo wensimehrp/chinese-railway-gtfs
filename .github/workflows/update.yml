@@ -30,7 +30,7 @@ jobs:
         with:
           use-flakehub: false
 
-      - run: nix develop --command scrape.py
+      - run: nix develop --command ./scrape.py
 
       # archive: false stores the file as-is. With archiving off the artifact
       # is named after the file, so downstream requests it as `railgo.sqlite`.
