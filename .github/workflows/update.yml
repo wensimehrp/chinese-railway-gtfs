@@ -53,7 +53,7 @@ jobs:
       # Normal path: the database produced by `scrape`
       - name: Download scraped database
         if: ${{ inputs.railgo_db_url == '' }}
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: railgo.sqlite
 
