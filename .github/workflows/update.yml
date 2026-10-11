@@ -74,6 +74,7 @@ jobs:
 
   release:
     needs: generate_gtfs
+    if: ${{ !cancelled() && needs.generate_gtfs.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
