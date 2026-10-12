@@ -376,8 +376,8 @@ def build(
         ],
         [
             [
-                AGENCY_NAME,
-                AGENCY_URL,
+                "wensimehrp (Jeremy Gao)",
+                "https://github.com/wensimehrp/chinese-railway-gtfs",
                 "zh",
                 start,
                 end,
