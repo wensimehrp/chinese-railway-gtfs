@@ -72,9 +72,40 @@ jobs:
           archive: false
           path: export/output_gtfs.zip
 
+  line_scraper:
+    runs-on: ubuntu-latest
+    # Best-effort: a failed scrape must not fail the run, hold up the feed jobs,
+    # or cancel anything else.
+    continue-on-error: true
+    outputs:
+      scraped: ${{ steps.scrape.outcome == 'success' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
+        with:
+          use-flakehub: false
+
+      # The scraper is a Gleam project whose toolchain comes from the repo flake;
+      # it must run from inside line_scraper, and only its stdout is the JSON feed.
+      - name: Scrape line data
+        id: scrape
+        working-directory: line_scraper
+        run: nix develop "$GITHUB_WORKSPACE" --command gleam run > lines.json
+
+      - name: Upload scraped lines
+        if: ${{ steps.scrape.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: lines.json
+          path: line_scraper/lines.json
+          archive: false
+
   release:
-    needs: generate_gtfs
-    if: ${{ !cancelled() && needs.generate_gtfs.result == 'success' }}
+    needs:
+      - generate_gtfs
+      - line_scraper
+    if: ${{ always() && !cancelled() && needs.generate_gtfs.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -85,6 +116,14 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: output_gtfs.zip
+
+      # Present only when the line scrape succeeded; the release goes out
+      # without it otherwise.
+      - name: Download scraped lines
+        if: ${{ needs.line_scraper.outputs.scraped == 'true' }}
+        uses: actions/download-artifact@v7
+        with:
+          name: lines.json
 
       - name: Create timestamp tag
         id: tag
@@ -101,5 +140,7 @@ jobs:
           name: ${{ steps.tag.outputs.tag }}
           body: |
             Preview the GTFS file on [Paiagram](https://paiagram.com/nightly/?open=/api/proxy?url=https://github.com/wensimehrp/chinese-railway-gtfs/releases/download/${{ steps.tag.outputs.tag }}/output_gtfs.zip).
+          fail_on_unmatched_files: false
           files: |
             output_gtfs.zip
+            lines.json
