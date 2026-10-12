@@ -78,19 +78,18 @@
             exec mongod --dbpath "$dbpath" --bind_ip 127.0.0.1 --port "$port" "$@"
           '';
         };
-
-        isX86Linux = pkgs.stdenv.hostPlatform.system == "x86_64-linux";
       in
       {
         devShells.default = pkgs.mkShell {
           packages = [
             pkgs.uv # Python project / dependency management
             pkgs.typst # document tooling
-          ]
-          ++ pkgs.lib.optionals isX86Linux [
             mongodb # the prebuilt server (provides `mongod`)
             pkgs.mongosh # shell for inspecting the database
             railgo-mongod # helper that starts a local mongod
+            pkgs.gleam
+            pkgs.erlang
+            pkgs.rebar3
           ];
         };
       }
