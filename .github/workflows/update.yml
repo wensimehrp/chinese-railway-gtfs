@@ -91,7 +91,7 @@ jobs:
       - name: Scrape line data
         id: scrape
         working-directory: line_scraper
-        run: nix develop "$GITHUB_WORKSPACE" --command gleam run > lines.json
+        run: nix develop "$GITHUB_WORKSPACE" --command gleam run
 
       - name: Upload scraped lines
         if: ${{ steps.scrape.outcome == 'success' }}

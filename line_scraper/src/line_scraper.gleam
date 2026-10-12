@@ -9,6 +9,7 @@ import gleam/result
 import gleam/string
 import gleam/uri
 import presentable_soup as soup
+import simplifile
 
 pub fn main() -> Nil {
   let assert Ok(line_list) = query_index()
@@ -70,7 +71,11 @@ pub fn main() -> Nil {
         json.array(from: row, of: json.string)
       })
     })
-  io.print(json_string |> json.to_string)
+  let assert Ok(_) =
+    simplifile.write(
+      to: "./lines.json",
+      contents: json_string |> json.to_string,
+    )
   Nil
 }
 
