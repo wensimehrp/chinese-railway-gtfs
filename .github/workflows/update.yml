@@ -113,7 +113,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Download generated GTFS
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: output_gtfs.zip
 
@@ -121,7 +121,7 @@ jobs:
       # without it otherwise.
       - name: Download scraped lines
         if: ${{ needs.line_scraper.outputs.scraped == 'true' }}
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: lines.json
 
