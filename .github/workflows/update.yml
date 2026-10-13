@@ -115,6 +115,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: output_gtfs.zip
+          skip-decompress: true
 
       # Present only when the line scrape succeeded; the release goes out
       # without it otherwise.
